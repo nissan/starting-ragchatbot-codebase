@@ -220,16 +220,20 @@ header h1 {
 
 /* Collapsible Sources */
 .sources-collapsible {
-    margin-top: 0.5rem;
-    font-size: 0.75rem;
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
 }
 
 .sources-collapsible summary {
     cursor: pointer;
-    padding: 0.25rem 0.5rem;
+    padding: 0.375rem 0.75rem;
     user-select: none;
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
 }
 
 .sources-collapsible summary:hover {
@@ -237,12 +241,42 @@ header h1 {
 }
 
 .sources-collapsible[open] summary {
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.375rem;
 }
 
 .sources-content {
-    padding: 0 0.5rem 0.25rem 1.5rem;
-    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.25rem 0.75rem 0.5rem;
+}
+
+.sources-content a.source-link,
+.sources-content .source-text {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    transition: all 0.15s ease;
+}
+
+.sources-content a.source-link:hover {
+    border-color: var(--primary-color);
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--primary-color);
+    transform: translateX(2px);
+}
+
+.source-icon {
+    flex-shrink: 0;
+    font-size: 0.9rem;
 }
 
 /* Markdown formatting styles */
