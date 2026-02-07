@@ -168,3 +168,52 @@ class TestToolManager:
 
         tool_manager_with_tools.reset_sources()
         assert tool_manager_with_tools.get_last_sources() == []
+
+    def test_multi_tool_source_accumulation(self, tool_manager_with_tools):
+        """get_last_sources returns deduplicated sources from ALL tools after multi-round calls."""
+        # Round 1: outline tool populates its sources
+        tool_manager_with_tools.execute_tool(
+            "get_course_outline", course_name="Intro to RAG"
+        )
+        # Round 2: search tool populates its sources
+        tool_manager_with_tools.execute_tool(
+            "search_course_content", query="RAG basics"
+        )
+
+        sources = tool_manager_with_tools.get_last_sources()
+        source_texts = [s["text"] for s in sources]
+
+        # Should have sources from BOTH tools
+        assert "Intro to RAG" in source_texts  # from outline tool
+        assert "Intro to RAG - Lesson 1" in source_texts  # from search tool
+        assert "Intro to RAG - Lesson 2" in source_texts  # from search tool
+
+    def test_multi_tool_source_deduplication(self, tool_manager_with_tools):
+        """Duplicate source texts across tools are deduplicated."""
+        # Both tools produce sources with "Intro to RAG" text
+        tool_manager_with_tools.execute_tool(
+            "get_course_outline", course_name="Intro to RAG"
+        )
+        tool_manager_with_tools.execute_tool(
+            "search_course_content", query="RAG basics"
+        )
+
+        sources = tool_manager_with_tools.get_last_sources()
+        source_texts = [s["text"] for s in sources]
+
+        # "Intro to RAG" appears in both outline and search sources,
+        # but should only appear once in combined output
+        assert source_texts.count("Intro to RAG") == 1
+
+    def test_multi_tool_reset_clears_all(self, tool_manager_with_tools):
+        """reset_sources clears sources from all tools."""
+        tool_manager_with_tools.execute_tool(
+            "get_course_outline", course_name="Intro to RAG"
+        )
+        tool_manager_with_tools.execute_tool(
+            "search_course_content", query="RAG basics"
+        )
+
+        tool_manager_with_tools.reset_sources()
+
+        assert tool_manager_with_tools.get_last_sources() == []

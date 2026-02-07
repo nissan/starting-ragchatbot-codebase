@@ -1,7 +1,10 @@
 import json
+import logging
 import re
 import ollama
 from typing import List, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaGenerator:
@@ -12,8 +15,10 @@ class OllamaGenerator:
 Tool Usage:
 - **search_course_content**: Use for questions about specific course content or detailed educational materials.
 - **get_course_outline**: Use when the user asks about a course's structure, outline, syllabus, lesson list, what topics a course covers, or how many lessons it has. Format the course link as a markdown hyperlink using the course title as the display text. List every lesson with its number and title.
-- **One tool call per query maximum**
+- You may make up to 2 sequential tool calls per query when needed. Use a single tool call for straightforward lookups.
+- **When to chain 2 tool calls**: If the user asks about a specific lesson's topic and then wants to compare or find similar content elsewhere, first search/get the specific content, then make a second search WITHOUT a course_name filter to find results across all courses.
 - Synthesize tool results into accurate, fact-based responses
+- Always use the full course title (not abbreviations) when referencing courses in your response
 - If a tool yields no results, state this clearly without offering alternatives
 
 Response Protocol:
@@ -32,6 +37,8 @@ All responses must be:
 4. **Example-supported** - Include relevant examples when they aid understanding
 Provide only the direct answer to what was asked.
 """
+
+    MAX_TOOL_ROUNDS = 2
 
     def __init__(self, model: str, base_url: str):
         self.model = model
@@ -84,74 +91,108 @@ Provide only the direct answer to what was asked.
                 return f"Error: Model '{self.model}' not found. Pull it with `ollama pull {self.model}`."
             return f"Ollama error: {e}"
 
-        # Handle tool calls if present (via proper tool_calls field)
-        tool_calls = response.message.tool_calls
-        content = response.message.content
+        # Extract tool calls (proper tool_calls field or JSON dumped as text)
+        if tool_manager:
+            pending_calls = self._normalize_tool_calls(response, query)
+            if pending_calls:
+                return self._handle_tool_execution(
+                    pending_calls, messages, query, tool_manager, ollama_tools
+                )
 
-        if tool_calls and tool_manager:
-            return self._handle_tool_execution(response, messages, query, tool_manager)
+        return response.message.content or ""
 
-        # Small models sometimes dump the tool call as JSON text instead of
-        # using the tool_calls mechanism. Detect and handle that case.
-        if tool_manager and content:
-            parsed = self._try_parse_text_tool_call(content)
+    def _normalize_tool_calls(self, response, fallback_query: str) -> List[Dict]:
+        """Extract tool calls from proper tool_calls field or JSON text.
+
+        Returns list of {"name": str, "args": dict} dicts.
+        """
+        calls = []
+        if response.message.tool_calls:
+            for tc in response.message.tool_calls:
+                calls.append({
+                    "name": tc.function.name,
+                    "args": self._fix_tool_arguments(
+                        tc.function.arguments, fallback_query,
+                        tool_name=tc.function.name,
+                    ),
+                })
+        elif response.message.content:
+            parsed = self._try_parse_text_tool_call(response.message.content)
             if parsed:
-                return self._execute_parsed_tool_call(parsed, messages, query, tool_manager)
+                calls.append({
+                    "name": parsed["name"],
+                    "args": self._fix_tool_arguments(
+                        parsed.get("parameters", {}), fallback_query,
+                        tool_name=parsed["name"],
+                    ),
+                })
+        return calls
 
-        return content or ""
+    def _handle_tool_execution(self, pending_calls: List[Dict], messages: List[Dict],
+                               fallback_query: str, tool_manager,
+                               ollama_tools=None) -> str:
+        """Execute tool calls across up to MAX_TOOL_ROUNDS rounds.
 
-    def _handle_tool_execution(self, initial_response, messages: List[Dict],
-                               fallback_query: str, tool_manager) -> str:
-        """Handle tool calls from Ollama and get a synthesis response."""
-        messages = messages.copy()
-        messages.append({"role": "assistant", "content": "Let me search for that information."})
-
-        # Execute all tool calls and collect results
-        all_results = []
-        for tool_call in initial_response.message.tool_calls:
-            args = self._fix_tool_arguments(
-                tool_call.function.arguments, fallback_query,
-                tool_name=tool_call.function.name,
-            )
-            tool_result = tool_manager.execute_tool(
-                tool_call.function.name,
-                **args,
-            )
-            all_results.append(tool_result)
-
-        combined = "\n\n".join(all_results)
-        return self._synthesize(messages, combined)
-
-    def _synthesize(self, messages: List[Dict], tool_result: str) -> str:
-        """Send tool results as a user message and get a synthesis response.
-
-        Small models (e.g. llama3.2:3b) often ignore {"role": "tool"} messages.
-        Sending the results as a user message works reliably.
+        Each round: execute pending calls, send results back to model.
+        Tools are included on non-last rounds so the model can chain.
         """
         messages = messages.copy()
-        messages.append({
-            "role": "user",
-            "content": (
-                "Here are the search results from the course database:\n\n"
-                f"{tool_result}\n\n"
-                "Please answer the question based on these results."
-            ),
-        })
+        combined = ""
 
-        try:
-            final_response = self.client.chat(
-                model=self.model,
-                messages=messages,
-                options={"temperature": 0},
-            )
-        except (ConnectionError, ollama.ResponseError) as e:
-            return f"Ollama error during synthesis: {e}"
+        for round_num in range(self.MAX_TOOL_ROUNDS):
+            messages.append({"role": "assistant", "content": "Let me search for that information."})
 
-        result = final_response.message.content or ""
-        # Guard against synthesis returning another tool call JSON
-        if result.strip().startswith("{") and self._try_parse_text_tool_call(result):
-            return tool_result
-        return result
+            all_results = []
+            for call in pending_calls:
+                logger.info(
+                    f"Tool round {round_num + 1}/{self.MAX_TOOL_ROUNDS}: "
+                    f"calling {call['name']}({call['args']})"
+                )
+                result = tool_manager.execute_tool(call["name"], **call["args"])
+                all_results.append(result)
+
+            combined = "\n\n".join(all_results)
+
+            # Send results as user message (small models ignore tool role)
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Here are the search results from the course database:\n\n"
+                    f"{combined}\n\n"
+                    "Please answer the question based on these results."
+                ),
+            })
+
+            is_last_round = (round_num == self.MAX_TOOL_ROUNDS - 1)
+
+            try:
+                response = self.client.chat(
+                    model=self.model,
+                    messages=messages,
+                    tools=ollama_tools if not is_last_round else None,
+                    options={"temperature": 0},
+                )
+            except (ConnectionError, ollama.ResponseError) as e:
+                return f"Ollama error during synthesis: {e}"
+
+            # Check if model wants another tool call
+            if not is_last_round:
+                next_calls = self._normalize_tool_calls(response, fallback_query)
+                if next_calls:
+                    pending_calls = next_calls
+                    continue
+
+            # No more tool calls or last round
+            break
+
+        content = response.message.content or ""
+        # Guard against synthesis returning tool call JSON instead of text
+        if content.strip().startswith("{") and self._try_parse_text_tool_call(content):
+            logger.info(f"Tool execution completed after {round_num + 1} round(s) (JSON guard)")
+            return combined
+
+        logger.info(f"Tool execution completed after {round_num + 1} round(s)")
+        return content
 
     @staticmethod
     def _is_stringified_schema(value: str) -> bool:
@@ -267,20 +308,6 @@ Provide only the direct answer to what was asked.
             return json.loads(text)
         except (json.JSONDecodeError, ValueError):
             return None
-
-    def _execute_parsed_tool_call(self, parsed: Dict, messages: List[Dict],
-                                  fallback_query: str, tool_manager) -> str:
-        """Execute a tool call that was parsed from text content and synthesize."""
-        messages = messages.copy()
-        messages.append({"role": "assistant", "content": "Let me search for that information."})
-
-        args = self._fix_tool_arguments(
-            parsed.get("parameters", {}), fallback_query,
-            tool_name=parsed["name"],
-        )
-        tool_result = tool_manager.execute_tool(parsed["name"], **args)
-
-        return self._synthesize(messages, tool_result)
 
     @staticmethod
     def _convert_tool(anthropic_tool: Dict[str, Any]) -> Dict[str, Any]:

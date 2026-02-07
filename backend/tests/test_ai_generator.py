@@ -181,8 +181,168 @@ class TestToolUseTwoPass:
         assert messages[2]["content"][0]["tool_use_id"] == "toolu_abc123"
         assert messages[2]["content"][0]["content"] == "Found: RAG is a technique..."
 
-        # Second call should NOT include tools
-        assert "tools" not in second_call_kwargs
+        # Second call (round 0, not last round) DOES include tools to allow chaining
+        assert "tools" in second_call_kwargs
+
+
+# ===================================================================
+# Multi-round tool execution
+# ===================================================================
+
+class TestMultiRoundToolExecution:
+
+    def test_two_round_tool_flow(self, generator, mock_anthropic_client):
+        """Claude chains two tool calls: outline → search. 3 API calls total."""
+        tools = [{"name": "get_course_outline", "input_schema": {}},
+                 {"name": "search_course_content", "input_schema": {}}]
+
+        # Round 0: Claude calls get_course_outline
+        resp_round0 = make_anthropic_response(
+            tool_use={"id": "toolu_1", "name": "get_course_outline",
+                       "input": {"course_name": "Intro to AI"}},
+            stop_reason="tool_use",
+        )
+        # Round 1: Claude calls search_course_content based on outline
+        resp_round1 = make_anthropic_response(
+            tool_use={"id": "toolu_2", "name": "search_course_content",
+                       "input": {"query": "neural networks"}},
+            stop_reason="tool_use",
+        )
+        # Final synthesis (no tools available)
+        resp_final = make_anthropic_response(
+            text="Lesson 3 covers neural networks.", stop_reason="end_turn"
+        )
+        mock_anthropic_client.messages.create.side_effect = [
+            resp_round0, resp_round1, resp_final
+        ]
+
+        tool_manager = MagicMock()
+        tool_manager.execute_tool.side_effect = [
+            "Lesson 1: Basics\nLesson 2: ML\nLesson 3: Neural Networks",
+            "Neural networks are modeled after the brain...",
+        ]
+
+        result = generator.generate_response(
+            query="What does lesson 3 of Intro to AI cover?",
+            tools=tools, tool_manager=tool_manager,
+        )
+
+        assert result == "Lesson 3 covers neural networks."
+        # 1 initial + 2 in the loop = 3 total
+        assert mock_anthropic_client.messages.create.call_count == 3
+        assert tool_manager.execute_tool.call_count == 2
+
+        calls = mock_anthropic_client.messages.create.call_args_list
+        # 2nd call (round 0 follow-up) should include tools
+        assert "tools" in calls[1].kwargs
+        # 3rd call (round 1 / last round) should NOT include tools
+        assert "tools" not in calls[2].kwargs
+
+    def test_early_termination_after_first_round(self, generator, mock_anthropic_client):
+        """Claude answers directly after round 0 despite tools being available."""
+        tools = [{"name": "search_course_content", "input_schema": {}}]
+
+        resp_tool = make_anthropic_response(
+            tool_use={"id": "toolu_1", "name": "search_course_content",
+                       "input": {"query": "python basics"}},
+            stop_reason="tool_use",
+        )
+        resp_text = make_anthropic_response(
+            text="Python is a programming language.", stop_reason="end_turn"
+        )
+        mock_anthropic_client.messages.create.side_effect = [resp_tool, resp_text]
+
+        tool_manager = MagicMock()
+        tool_manager.execute_tool.return_value = "Python: easy to learn..."
+
+        result = generator.generate_response(
+            query="What is Python?", tools=tools, tool_manager=tool_manager,
+        )
+
+        assert result == "Python is a programming language."
+        # Only 2 API calls (initial + round 0 follow-up), not 3
+        assert mock_anthropic_client.messages.create.call_count == 2
+        assert tool_manager.execute_tool.call_count == 1
+
+        # The round-0 follow-up should still include tools (not last round)
+        second_call = mock_anthropic_client.messages.create.call_args_list[1].kwargs
+        assert "tools" in second_call
+
+    def test_max_rounds_guard(self, generator, mock_anthropic_client):
+        """Even if Claude keeps requesting tools, loop stops at MAX_TOOL_ROUNDS."""
+        tools = [{"name": "search_course_content", "input_schema": {}}]
+
+        resp_tool_1 = make_anthropic_response(
+            tool_use={"id": "toolu_1", "name": "search_course_content",
+                       "input": {"query": "topic A"}},
+            stop_reason="tool_use",
+        )
+        resp_tool_2 = make_anthropic_response(
+            tool_use={"id": "toolu_2", "name": "search_course_content",
+                       "input": {"query": "topic B"}},
+            stop_reason="tool_use",
+        )
+        # Last round omits tools, so Claude must synthesize
+        resp_final = make_anthropic_response(
+            text="Here is the combined answer.", stop_reason="end_turn"
+        )
+        mock_anthropic_client.messages.create.side_effect = [
+            resp_tool_1, resp_tool_2, resp_final
+        ]
+
+        tool_manager = MagicMock()
+        tool_manager.execute_tool.side_effect = ["Result A", "Result B"]
+
+        result = generator.generate_response(
+            query="Compare topics", tools=tools, tool_manager=tool_manager,
+        )
+
+        assert result == "Here is the combined answer."
+        assert mock_anthropic_client.messages.create.call_count == 3
+        assert tool_manager.execute_tool.call_count == 2
+
+        # 3rd call (last round) must NOT have tools
+        last_call = mock_anthropic_client.messages.create.call_args_list[2].kwargs
+        assert "tools" not in last_call
+
+    def test_tool_error_in_round_one(self, generator, mock_anthropic_client):
+        """Tool returns an error string in round 0; Claude tries a 2nd tool in round 1."""
+        tools = [{"name": "search_course_content", "input_schema": {}}]
+
+        resp_tool_1 = make_anthropic_response(
+            tool_use={"id": "toolu_1", "name": "search_course_content",
+                       "input": {"query": "bad query"}},
+            stop_reason="tool_use",
+        )
+        resp_tool_2 = make_anthropic_response(
+            tool_use={"id": "toolu_2", "name": "search_course_content",
+                       "input": {"query": "better query"}},
+            stop_reason="tool_use",
+        )
+        resp_final = make_anthropic_response(
+            text="Found the answer on retry.", stop_reason="end_turn"
+        )
+        mock_anthropic_client.messages.create.side_effect = [
+            resp_tool_1, resp_tool_2, resp_final
+        ]
+
+        tool_manager = MagicMock()
+        tool_manager.execute_tool.side_effect = [
+            "No results found for the query.",
+            "Here is the actual content...",
+        ]
+
+        result = generator.generate_response(
+            query="Search for something", tools=tools, tool_manager=tool_manager,
+        )
+
+        assert result == "Found the answer on retry."
+        assert tool_manager.execute_tool.call_count == 2
+
+        # Verify the error string was passed as tool_result content
+        second_call_msgs = mock_anthropic_client.messages.create.call_args_list[1].kwargs["messages"]
+        tool_result_msg = second_call_msgs[2]  # user message with tool_result
+        assert tool_result_msg["content"][0]["content"] == "No results found for the query."
 
 
 # ===================================================================

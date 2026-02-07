@@ -201,12 +201,16 @@ class ToolManager:
         return self.tools[tool_name].execute(**kwargs)
     
     def get_last_sources(self) -> list:
-        """Get sources from the last search operation"""
-        # Check all tools for last_sources attribute
+        """Get sources from all tools that were called (supports multi-round)"""
+        all_sources = []
+        seen = set()
         for tool in self.tools.values():
-            if hasattr(tool, 'last_sources') and tool.last_sources:
-                return tool.last_sources
-        return []
+            if hasattr(tool, 'last_sources'):
+                for source in tool.last_sources:
+                    if source["text"] not in seen:
+                        seen.add(source["text"])
+                        all_sources.append(source)
+        return all_sources
 
     def reset_sources(self):
         """Reset sources from all tools that track sources"""

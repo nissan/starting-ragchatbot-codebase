@@ -1,5 +1,8 @@
+import logging
 import warnings
 warnings.filterwarnings("ignore", message="resource_tracker: There appear to be.*")
+
+logging.basicConfig(level=logging.INFO)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
