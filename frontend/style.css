@@ -260,23 +260,45 @@ header h1 {
     background: var(--background);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    color: var(--text-primary);
     text-decoration: none;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     line-height: 1.4;
     transition: all 0.15s ease;
+}
+
+.sources-content .source-text {
+    color: var(--text-primary);
+}
+
+.sources-content a.source-link {
+    color: #60a5fa;
 }
 
 .sources-content a.source-link:hover {
     border-color: var(--primary-color);
     background: rgba(37, 99, 235, 0.08);
-    color: var(--primary-color);
+    color: #93bbfd;
     transform: translateX(2px);
 }
 
 .source-icon {
     flex-shrink: 0;
     font-size: 0.9rem;
+}
+
+.message-content a {
+    color: #60a5fa;
+    text-decoration: none;
+    background: rgba(37, 99, 235, 0.15);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    border-bottom: 1px solid rgba(96, 165, 250, 0.4);
+    transition: all 0.15s ease;
+}
+
+.message-content a:hover {
+    background: rgba(37, 99, 235, 0.25);
+    color: #93bbfd;
 }
 
 /* Markdown formatting styles */
