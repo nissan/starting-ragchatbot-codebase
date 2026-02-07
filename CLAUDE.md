@@ -25,7 +25,7 @@ uv sync
 ```bash
 cd backend && uv run pytest tests/ -v
 ```
-54 tests across `test_ai_generator.py`, `test_search_tools.py`, `test_rag_system.py`, and `test_integration.py`.
+73 tests across `test_ai_generator.py`, `test_search_tools.py`, `test_rag_system.py`, `test_integration.py`, and `test_api.py`.
 
 ### Code quality
 ```bash
