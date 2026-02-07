@@ -45,10 +45,13 @@ Provide only the direct answer to what was asked.
         self.client = ollama.Client(host=base_url)
         print(f"Using Ollama with model: {model}")
 
-    def generate_response(self, query: str,
-                         conversation_history: Optional[str] = None,
-                         tools: Optional[List] = None,
-                         tool_manager=None) -> str:
+    def generate_response(
+        self,
+        query: str,
+        conversation_history: Optional[str] = None,
+        tools: Optional[List] = None,
+        tool_manager=None,
+    ) -> str:
         """
         Generate AI response with optional tool usage and conversation context.
 
@@ -109,28 +112,39 @@ Provide only the direct answer to what was asked.
         calls = []
         if response.message.tool_calls:
             for tc in response.message.tool_calls:
-                calls.append({
-                    "name": tc.function.name,
-                    "args": self._fix_tool_arguments(
-                        tc.function.arguments, fallback_query,
-                        tool_name=tc.function.name,
-                    ),
-                })
+                calls.append(
+                    {
+                        "name": tc.function.name,
+                        "args": self._fix_tool_arguments(
+                            tc.function.arguments,
+                            fallback_query,
+                            tool_name=tc.function.name,
+                        ),
+                    }
+                )
         elif response.message.content:
             parsed = self._try_parse_text_tool_call(response.message.content)
             if parsed:
-                calls.append({
-                    "name": parsed["name"],
-                    "args": self._fix_tool_arguments(
-                        parsed.get("parameters", {}), fallback_query,
-                        tool_name=parsed["name"],
-                    ),
-                })
+                calls.append(
+                    {
+                        "name": parsed["name"],
+                        "args": self._fix_tool_arguments(
+                            parsed.get("parameters", {}),
+                            fallback_query,
+                            tool_name=parsed["name"],
+                        ),
+                    }
+                )
         return calls
 
-    def _handle_tool_execution(self, pending_calls: List[Dict], messages: List[Dict],
-                               fallback_query: str, tool_manager,
-                               ollama_tools=None) -> str:
+    def _handle_tool_execution(
+        self,
+        pending_calls: List[Dict],
+        messages: List[Dict],
+        fallback_query: str,
+        tool_manager,
+        ollama_tools=None,
+    ) -> str:
         """Execute tool calls across up to MAX_TOOL_ROUNDS rounds.
 
         Each round: execute pending calls, send results back to model.
@@ -140,7 +154,9 @@ Provide only the direct answer to what was asked.
         combined = ""
 
         for round_num in range(self.MAX_TOOL_ROUNDS):
-            messages.append({"role": "assistant", "content": "Let me search for that information."})
+            messages.append(
+                {"role": "assistant", "content": "Let me search for that information."}
+            )
 
             all_results = []
             for call in pending_calls:
@@ -154,16 +170,18 @@ Provide only the direct answer to what was asked.
             combined = "\n\n".join(all_results)
 
             # Send results as user message (small models ignore tool role)
-            messages.append({
-                "role": "user",
-                "content": (
-                    "Here are the search results from the course database:\n\n"
-                    f"{combined}\n\n"
-                    "Please answer the question based on these results."
-                ),
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Here are the search results from the course database:\n\n"
+                        f"{combined}\n\n"
+                        "Please answer the question based on these results."
+                    ),
+                }
+            )
 
-            is_last_round = (round_num == self.MAX_TOOL_ROUNDS - 1)
+            is_last_round = round_num == self.MAX_TOOL_ROUNDS - 1
 
             try:
                 response = self.client.chat(
@@ -188,7 +206,9 @@ Provide only the direct answer to what was asked.
         content = response.message.content or ""
         # Guard against synthesis returning tool call JSON instead of text
         if content.strip().startswith("{") and self._try_parse_text_tool_call(content):
-            logger.info(f"Tool execution completed after {round_num + 1} round(s) (JSON guard)")
+            logger.info(
+                f"Tool execution completed after {round_num + 1} round(s) (JSON guard)"
+            )
             return combined
 
         logger.info(f"Tool execution completed after {round_num + 1} round(s)")
@@ -233,8 +253,9 @@ Provide only the direct answer to what was asked.
         return None
 
     @staticmethod
-    def _fix_tool_arguments(args: Dict[str, Any], fallback_query: str = "",
-                            tool_name: str = "") -> Dict[str, Any]:
+    def _fix_tool_arguments(
+        args: Dict[str, Any], fallback_query: str = "", tool_name: str = ""
+    ) -> Dict[str, Any]:
         """Fix tool arguments when the model passes schema objects instead of values.
 
         Small models sometimes produce arguments like:
@@ -252,7 +273,9 @@ Provide only the direct answer to what was asked.
                 if extracted is None or extracted.strip().lower() in _skip_values:
                     continue
                 fixed[key] = extracted
-            elif isinstance(value, str) and OllamaGenerator._is_stringified_schema(value):
+            elif isinstance(value, str) and OllamaGenerator._is_stringified_schema(
+                value
+            ):
                 # Model pasted the schema definition as a string — discard it
                 continue
             else:

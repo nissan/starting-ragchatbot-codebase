@@ -9,6 +9,7 @@ import pytest
 @dataclass
 class MockConfig:
     """Minimal config with all attributes RAGSystem.__init__ needs."""
+
     CHUNK_SIZE: int = 800
     CHUNK_OVERLAP: int = 100
     CHROMA_PATH: str = "./test_chroma"
@@ -61,6 +62,7 @@ def rag_system(rag_mocks):
 # RAGSystem.query()
 # ===================================================================
 
+
 class TestRAGSystemQuery:
 
     def test_query_wraps_prompt(self, rag_system, rag_mocks):
@@ -68,7 +70,10 @@ class TestRAGSystemQuery:
         rag_system.query("What is RAG?")
 
         call_kwargs = rag_mocks["ai"].generate_response.call_args.kwargs
-        assert call_kwargs["query"] == "Answer this question about course materials: What is RAG?"
+        assert (
+            call_kwargs["query"]
+            == "Answer this question about course materials: What is RAG?"
+        )
 
     def test_query_passes_tools_and_manager(self, rag_system, rag_mocks):
         """generate_response called with tool definitions and tool_manager."""
@@ -82,7 +87,9 @@ class TestRAGSystemQuery:
 
     def test_query_with_session_history(self, rag_system, rag_mocks):
         """Gets history from session manager and passes to generate_response."""
-        rag_mocks["sm"].get_conversation_history.return_value = "User: Hi\nAssistant: Hello!"
+        rag_mocks["sm"].get_conversation_history.return_value = (
+            "User: Hi\nAssistant: Hello!"
+        )
 
         rag_system.query("Follow-up question", session_id="sess_1")
 

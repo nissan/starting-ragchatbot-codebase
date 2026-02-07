@@ -5,10 +5,10 @@ from unittest.mock import MagicMock
 from vector_store import SearchResults
 from search_tools import CourseSearchTool, CourseOutlineTool, ToolManager
 
-
 # ===================================================================
 # CourseSearchTool.execute()
 # ===================================================================
+
 
 class TestCourseSearchToolExecute:
     """Tests for CourseSearchTool.execute()"""
@@ -45,39 +45,53 @@ class TestCourseSearchToolExecute:
             query="embeddings", course_name="Intro to RAG", lesson_number=2
         )
 
-    def test_execute_empty_results(self, course_search_tool, mock_vector_store, empty_search_results):
+    def test_execute_empty_results(
+        self, course_search_tool, mock_vector_store, empty_search_results
+    ):
         mock_vector_store.search.return_value = empty_search_results
 
         result = course_search_tool.execute(query="nonexistent topic")
         assert result == "No relevant content found."
 
-    def test_execute_empty_with_course_filter(self, course_search_tool, mock_vector_store, empty_search_results):
+    def test_execute_empty_with_course_filter(
+        self, course_search_tool, mock_vector_store, empty_search_results
+    ):
         mock_vector_store.search.return_value = empty_search_results
 
         result = course_search_tool.execute(query="x", course_name="Advanced ML")
         assert result == "No relevant content found in course 'Advanced ML'."
 
-    def test_execute_empty_with_lesson_filter(self, course_search_tool, mock_vector_store, empty_search_results):
+    def test_execute_empty_with_lesson_filter(
+        self, course_search_tool, mock_vector_store, empty_search_results
+    ):
         mock_vector_store.search.return_value = empty_search_results
 
         result = course_search_tool.execute(query="x", lesson_number=5)
         assert result == "No relevant content found in lesson 5."
 
-    def test_execute_empty_with_both_filters(self, course_search_tool, mock_vector_store, empty_search_results):
+    def test_execute_empty_with_both_filters(
+        self, course_search_tool, mock_vector_store, empty_search_results
+    ):
         mock_vector_store.search.return_value = empty_search_results
 
         result = course_search_tool.execute(
             query="x", course_name="Advanced ML", lesson_number=5
         )
-        assert result == "No relevant content found in course 'Advanced ML' in lesson 5."
+        assert (
+            result == "No relevant content found in course 'Advanced ML' in lesson 5."
+        )
 
-    def test_execute_error(self, course_search_tool, mock_vector_store, error_search_results):
+    def test_execute_error(
+        self, course_search_tool, mock_vector_store, error_search_results
+    ):
         mock_vector_store.search.return_value = error_search_results
 
         result = course_search_tool.execute(query="anything")
         assert result == "Search error: connection refused"
 
-    def test_format_results_populates_sources(self, course_search_tool, mock_vector_store):
+    def test_format_results_populates_sources(
+        self, course_search_tool, mock_vector_store
+    ):
         """last_sources should contain deduplicated {text, link} entries."""
         # Use results where both docs share the same course — dedup should reduce to 2
         course_search_tool.execute(query="RAG basics")
@@ -87,7 +101,9 @@ class TestCourseSearchToolExecute:
         assert sources[0]["text"] == "Intro to RAG - Lesson 1"
         assert sources[0]["link"] == "https://example.com/lesson/1"
 
-    def test_format_results_lesson_link_fallback(self, course_search_tool, mock_vector_store):
+    def test_format_results_lesson_link_fallback(
+        self, course_search_tool, mock_vector_store
+    ):
         """Falls back to get_course_link() when get_lesson_link() returns None."""
         mock_vector_store.get_lesson_link.return_value = None
 
@@ -109,6 +125,7 @@ class TestCourseSearchToolExecute:
 # ===================================================================
 # CourseOutlineTool.execute()
 # ===================================================================
+
 
 class TestCourseOutlineToolExecute:
 
@@ -144,6 +161,7 @@ class TestCourseOutlineToolExecute:
 # ===================================================================
 # ToolManager
 # ===================================================================
+
 
 class TestToolManager:
 

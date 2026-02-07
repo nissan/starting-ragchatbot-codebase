@@ -205,9 +205,7 @@ class TestSearchToolIntegration:
             assert "text" in source
             assert source["link"] is not None
 
-    def test_outline_tool_returns_real_lessons(
-        self, real_outline_tool, indexed_course
-    ):
+    def test_outline_tool_returns_real_lessons(self, real_outline_tool, indexed_course):
         course, _ = indexed_course
         result = real_outline_tool.execute(course_name=course.title)
 
@@ -299,9 +297,7 @@ class TestRAGSystemIntegration:
 
         def fake_generate(query, conversation_history, tools, tool_manager):
             # Simulate Claude calling the search tool
-            tool_manager.execute_tool(
-                "search_course_content", query="embeddings"
-            )
+            tool_manager.execute_tool("search_course_content", query="embeddings")
             return "Here is the answer based on course content."
 
         mock_ai.generate_response.side_effect = fake_generate

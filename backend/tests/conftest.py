@@ -10,10 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from vector_store import SearchResults
 from search_tools import CourseSearchTool, CourseOutlineTool, ToolManager
 
-
 # ---------------------------------------------------------------------------
 # SearchResults fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_search_results():
@@ -47,6 +47,7 @@ def error_search_results():
 # Mock VectorStore
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_vector_store(sample_search_results):
     """A MagicMock standing in for VectorStore with common methods configured."""
@@ -69,6 +70,7 @@ def mock_vector_store(sample_search_results):
 # ---------------------------------------------------------------------------
 # Tool fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def course_search_tool(mock_vector_store):

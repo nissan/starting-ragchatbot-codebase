@@ -27,6 +27,15 @@ cd backend && uv run pytest tests/ -v
 ```
 54 tests across `test_ai_generator.py`, `test_search_tools.py`, `test_rag_system.py`, and `test_integration.py`.
 
+### Code quality
+```bash
+./scripts/quality.sh          # Run all checks (formatting + tests)
+./scripts/quality.sh format   # Auto-format code with black
+./scripts/quality.sh check    # Check formatting without changes
+./scripts/quality.sh test     # Run tests only
+```
+Black is configured in `pyproject.toml` (line-length 88, Python 3.13 target).
+
 ## Architecture
 
 ### Query Flow
