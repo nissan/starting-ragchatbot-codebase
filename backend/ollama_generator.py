@@ -7,17 +7,19 @@ from typing import List, Optional, Dict, Any
 class OllamaGenerator:
     """Handles interactions with a local Ollama instance for generating responses"""
 
-    SYSTEM_PROMPT = """ You are an AI assistant specialized in course materials and educational content with access to a comprehensive search tool for course information.
+    SYSTEM_PROMPT = """ You are an AI assistant specialized in course materials and educational content with access to tools for course information.
 
-Search Tool Usage:
-- Use the search tool **only** for questions about specific course content or detailed educational materials
-- **One search per query maximum**
-- Synthesize search results into accurate, fact-based responses
-- If search yields no results, state this clearly without offering alternatives
+Tool Usage:
+- **search_course_content**: Use for questions about specific course content or detailed educational materials.
+- **get_course_outline**: Use when the user asks about a course's structure, outline, syllabus, lesson list, what topics a course covers, or how many lessons it has. Format the course link as a markdown hyperlink using the course title as the display text. List every lesson with its number and title.
+- **One tool call per query maximum**
+- Synthesize tool results into accurate, fact-based responses
+- If a tool yields no results, state this clearly without offering alternatives
 
 Response Protocol:
 - **General knowledge questions**: Answer using existing knowledge without searching
-- **Course-specific questions**: Search first, then answer
+- **Course outline/structure questions**: Use get_course_outline, then present the course title as a markdown hyperlink (e.g. [Course Title](url)) and every lesson (number and title)
+- **Course content questions**: Use search_course_content, then answer
 - **No meta-commentary**:
  - Provide direct answers only — no reasoning process, search explanations, or question-type analysis
  - Do not mention "based on the search results"
@@ -107,7 +109,10 @@ Provide only the direct answer to what was asked.
         # Execute all tool calls and collect results
         all_results = []
         for tool_call in initial_response.message.tool_calls:
-            args = self._fix_tool_arguments(tool_call.function.arguments, fallback_query)
+            args = self._fix_tool_arguments(
+                tool_call.function.arguments, fallback_query,
+                tool_name=tool_call.function.name,
+            )
             tool_result = tool_manager.execute_tool(
                 tool_call.function.name,
                 **args,
@@ -187,7 +192,8 @@ Provide only the direct answer to what was asked.
         return None
 
     @staticmethod
-    def _fix_tool_arguments(args: Dict[str, Any], fallback_query: str = "") -> Dict[str, Any]:
+    def _fix_tool_arguments(args: Dict[str, Any], fallback_query: str = "",
+                            tool_name: str = "") -> Dict[str, Any]:
         """Fix tool arguments when the model passes schema objects instead of values.
 
         Small models sometimes produce arguments like:
@@ -220,16 +226,17 @@ Provide only the direct answer to what was asked.
             except (ValueError, TypeError):
                 del fixed["lesson_number"]
 
-        # Ensure query is present — fall back to the user's original question
-        if not fixed.get("query") and fallback_query:
-            fixed["query"] = fallback_query
-
         # If course_name is missing, try to extract it from the fallback query
         # Look for quoted course names like "MCP: Build Rich-Context AI Apps"
         if not fixed.get("course_name") and fallback_query:
             match = re.search(r'["\u201c]([^"\u201d]+)["\u201d]', fallback_query)
             if match:
                 fixed["course_name"] = match.group(1)
+
+        # Only inject query fallback for tools that require it
+        if tool_name != "get_course_outline":
+            if not fixed.get("query") and fallback_query:
+                fixed["query"] = fallback_query
 
         return fixed
 
@@ -267,7 +274,10 @@ Provide only the direct answer to what was asked.
         messages = messages.copy()
         messages.append({"role": "assistant", "content": "Let me search for that information."})
 
-        args = self._fix_tool_arguments(parsed.get("parameters", {}), fallback_query)
+        args = self._fix_tool_arguments(
+            parsed.get("parameters", {}), fallback_query,
+            tool_name=parsed["name"],
+        )
         tool_result = tool_manager.execute_tool(parsed["name"], **args)
 
         return self._synthesize(messages, tool_result)
