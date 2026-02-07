@@ -7,6 +7,16 @@ let currentSessionId = null;
 // DOM elements
 let chatMessages, chatInput, sendButton, totalCourses, courseTitles, newChatButton;
 
+// Theme: apply saved preference before DOM is ready to prevent flash
+(function initTheme() {
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+        document.documentElement.setAttribute('data-theme', saved);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        document.documentElement.setAttribute('data-theme', 'light');
+    }
+})();
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     // Get DOM elements after page loads
@@ -16,8 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
     newChatButton = document.getElementById('newChatButton');
-    
+
     setupEventListeners();
+    setupThemeToggle();
     createNewSession();
     loadCourseStats();
 });
@@ -44,6 +55,47 @@ function setupEventListeners() {
     });
 }
 
+
+// Theme Toggle
+function setupThemeToggle() {
+    const toggle = document.getElementById('themeToggle');
+    if (!toggle) return;
+
+    // Sync aria-label with current theme
+    updateToggleLabel(toggle);
+
+    toggle.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'light' ? 'dark' : 'light';
+        applyTheme(next);
+        localStorage.setItem('theme', next);
+        updateToggleLabel(toggle);
+    });
+
+    // Listen for OS-level theme changes (only when user hasn't set a preference)
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+            if (!localStorage.getItem('theme')) {
+                applyTheme(e.matches ? 'light' : 'dark');
+                updateToggleLabel(toggle);
+            }
+        });
+    }
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    // Update the color-scheme meta tag so native browser controls match
+    const meta = document.querySelector('meta[name="color-scheme"]');
+    if (meta) {
+        meta.setAttribute('content', theme === 'light' ? 'light dark' : 'dark light');
+    }
+}
+
+function updateToggleLabel(toggle) {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    toggle.setAttribute('aria-label', isLight ? 'Switch to dark theme' : 'Switch to light theme');
+}
 
 // Chat Functions
 async function sendMessage() {
