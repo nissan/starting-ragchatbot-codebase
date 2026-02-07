@@ -14,3 +14,6 @@ dependencies = [
     "python-dotenv==1.1.1",
     "ollama>=0.4.0",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
