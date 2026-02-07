@@ -24,3 +24,5 @@ Notes:
 - update the system prompt in @backend/ai_generator.py
 - update the test @backend/tests/test_ai_generator.py
 - Write tests that verify the external behavior (API calls made, tools executed, results returned) rather than internal state details.
+
+Use two parallel subagents to brainstorm possible plans. Do not implement any code.
